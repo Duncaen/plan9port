@@ -33,6 +33,9 @@ tspawnloop: test/tspawnloop.$O
 # with generic .s rule in mkcommon on case-insensitive
 # systems like Mac OS X.
 
+Linux-%-asm.$O:	Linux-%-asm.S
+	$CC $CFLAGS Linux-$stem-asm.S
+
 OpenBSD-%-asm.$O:	OpenBSD-%-asm.S
 	$CC $CFLAGS OpenBSD-$stem-asm.S
 

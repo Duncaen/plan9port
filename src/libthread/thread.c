@@ -726,8 +726,6 @@ main(int argc, char **argv)
 	/*
 	 * Install locking routines into C library.
 	 */
-	_lock = _threadlock;
-	_unlock = _threadunlock;
 	_qlock = threadqlock;
 	_qunlock = threadqunlock;
 	_rlock = threadrlock;

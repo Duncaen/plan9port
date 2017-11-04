@@ -1,3 +1,6 @@
+#if defined(__linux__)
+#	define _GNU_SOURCE
+#endif
 #include "u.h"
 #include <errno.h>
 #include <sys/time.h>
@@ -5,7 +8,7 @@
 #include <sys/wait.h>
 #include <sched.h>
 #include <signal.h>
-#if !defined(__OpenBSD__)
+#if !defined(__OpenBSD__) && !defined(__linux__)
 #	if defined(__APPLE__)
 #		define _XOPEN_SOURCE 	/* for Snow Leopard */
 #	endif
@@ -14,6 +17,24 @@
 #include <sys/utsname.h>
 #include "libc.h"
 #include "thread.h"
+
+#if defined(__linux__) && defined(__amd64__)
+#	define mcontext libthread_mcontext
+#	define mcontext_t libthread_mcontext_t
+#	define ucontext libthread_ucontext
+#	define ucontext_t libthread_ucontext_t
+#	if defined(__i386__)
+#		include "386-ucontext.h"
+#	elif defined(__x86_64__)
+#		include "x86_64-ucontext.h"
+#	endif
+extern	int		getmcontext(mcontext_t*);
+extern	void		setmcontext(const mcontext_t*);
+#define	setcontext(u)	setmcontext(&(u)->uc_mcontext)
+#define	getcontext(u)	getmcontext(&(u)->uc_mcontext)
+extern	int		swapcontext(ucontext_t*, const ucontext_t*);
+extern	void		makecontext(ucontext_t*, void(*)(), int, ...);
+#endif
 
 #if defined(__FreeBSD__) && __FreeBSD__ < 5
 extern	int		getmcontext(mcontext_t*);

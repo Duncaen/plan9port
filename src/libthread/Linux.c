@@ -1,7 +1,45 @@
 #include "threadimpl.h"
 
+#if defined(__linux__) && defined(__amd64__)
+#define NEEDSWAPCONTEXT
+#define NEEDAMD64MAKECONTEXT
+#endif
+
 #undef exits
 #undef _exits
+
+#ifdef NEEDAMD64MAKECONTEXT
+void
+makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
+{
+	long *sp;
+	va_list va;
+
+	memset(&ucp->uc_mcontext, 0, sizeof ucp->uc_mcontext);
+	if(argc != 2)
+		*(volatile int*)0 = 0;
+	va_start(va, argc);
+	ucp->uc_mcontext.mc_rdi = va_arg(va, int);
+	ucp->uc_mcontext.mc_rsi = va_arg(va, int);
+	va_end(va);
+	sp = (long*)ucp->uc_stack.ss_sp+ucp->uc_stack.ss_size/sizeof(long);
+	sp -= argc;
+	sp = (void*)((uintptr_t)sp - (uintptr_t)sp%16);	/* 16-align for OS X */
+	*--sp = 0;	/* return address */
+	ucp->uc_mcontext.mc_rip = (long)func;
+	ucp->uc_mcontext.mc_rsp = (long)sp;
+}
+#endif
+
+#ifdef NEEDSWAPCONTEXT
+int
+swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
+{
+	if(getcontext(oucp) == 0)
+		setcontext(ucp);
+	return 0;
+}
+#endif
 
 static int
 timefmt(Fmt *fmt)
@@ -15,83 +53,6 @@ timefmt(Fmt *fmt)
 	return fmtprint(fmt, "%s %2d %02d:%02d:%02d.%03d", 
 		mon[tm.mon], tm.mday, tm.hour, tm.min, tm.sec,
 		(int)(ns%1000000000)/1000000);
-}
-
-/*
- * spin locks
- */
-extern int _tas(int*);
-
-void
-_threadunlock(Lock *l, ulong pc)
-{
-	USED(pc);
-
-	l->held = 0;
-}
-
-int
-_threadlock(Lock *l, int block, ulong pc)
-{
-	int i;
-static int first=1;
-if(first) {first=0; fmtinstall('\001', timefmt);}
-
-	USED(pc);
-
-	/* once fast */
-	if(!_tas(&l->held))
-		return 1;
-	if(!block)
-		return 0;
-
-	/* a thousand times pretty fast */
-	for(i=0; i<1000; i++){
-		if(!_tas(&l->held))
-			return 1;
-		sched_yield();
-	}
-	/* now increasingly slow */
-	for(i=0; i<10; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(1);
-	}
-fprint(2, "%\001 %s: lock loop1 %p from %lux\n", argv0, l, pc);
-	for(i=0; i<10; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(10);
-	}
-fprint(2, "%\001 %s: lock loop2 %p from %lux\n", argv0, l, pc);
-	for(i=0; i<10; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(100);
-	}
-fprint(2, "%\001 %s: lock loop3 %p from %lux\n", argv0, l, pc);
-	for(i=0; i<10; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(1000);
-	}
-fprint(2, "%\001 %s: lock loop4 %p from %lux\n", argv0, l, pc);
-	for(i=0; i<10; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(10*1000);
-	}
-fprint(2, "%\001 %s: lock loop5 %p from %lux\n", argv0, l, pc);
-	for(i=0; i<1000; i++){
-		if(!_tas(&l->held))
-			return 1;
-		usleep(100*1000);
-	}
-fprint(2, "%\001 %s: lock loop6 %p from %lux\n", argv0, l, pc);
-	/* take your time */
-	while(_tas(&l->held))
-		usleep(1000*1000);
-	return 1;
 }
 
 /*
